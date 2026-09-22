@@ -23,14 +23,34 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path(os.environ.get("GPX_UPLOAD_DIR", "uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+STATIC_DIR = Path("static")
+
 app = FastAPI(title="GPX Wind Analyzer")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 
+def _asset_version() -> str:
+    """Cache-busting token for style.css/app.js, so browsers fetch the new
+    versions right after a deploy instead of serving a stale cached copy
+    from the same URL."""
+    try:
+        newest_mtime = max(
+            (STATIC_DIR / "app.js").stat().st_mtime,
+            (STATIC_DIR / "style.css").stat().st_mtime,
+        )
+        return str(int(newest_mtime))
+    except OSError:
+        return "0"
+
+
 @app.get("/")
 async def index(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html", context={})
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"asset_version": _asset_version()},
+    )
 
 
 @app.get("/health")
