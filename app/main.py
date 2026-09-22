@@ -1,5 +1,6 @@
-"""FastAPI app: upload a GPX route, get a head/tail/crosswind analysis for it."""
+"""FastAPI app: upload one or two GPX routes, get a head/tail/crosswind analysis for each."""
 
+import asyncio
 import logging
 import os
 import shutil
@@ -44,41 +45,51 @@ def _parse_ride_datetime(date_str: str, time_str: str) -> datetime:
         raise ValueError("Ongeldige datum of tijd. Verwacht formaat: JJJJ-MM-DD en UU:MM.") from exc
 
 
+async def _analyze_route(file: UploadFile, direction: str, ride_dt: datetime, label: str) -> dict:
+    gpx_path = UPLOAD_DIR / f"{uuid.uuid4()}.gpx"
+
+    with gpx_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    logger.info("GPX opgeslagen (%s): %s", label, gpx_path)
+
+    route = parse_gpx(gpx_path)
+    logger.info("%s: %d punten, %d segmenten", label, len(route["points"]), len(route["segments"]))
+
+    if direction == "reverse":
+        route = reverse_route(route)
+
+    wind_data = await analyze_segments(route["segments"], ride_dt)
+
+    return {
+        "label": label,
+        "route": {
+            "points": route["points"],
+            "distance_km": route["distance_km"],
+            "coordinates": route["coordinates"],
+        },
+        "wind": wind_data,
+    }
+
+
 @app.post("/upload")
 async def upload(
     file: UploadFile = File(...),
     date: str = Form(...),
     time: str = Form(...),
     direction: str = Form("normal"),
+    file2: UploadFile | None = File(None),
+    direction2: str = Form("normal"),
 ):
-    gpx_path = UPLOAD_DIR / f"{uuid.uuid4()}.gpx"
-
     try:
         ride_dt = _parse_ride_datetime(date, time)
 
-        with gpx_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        logger.info("GPX opgeslagen: %s", gpx_path)
+        tasks = [_analyze_route(file, direction, ride_dt, file.filename or "Route 1")]
+        if file2 is not None and file2.filename:
+            tasks.append(_analyze_route(file2, direction2, ride_dt, file2.filename or "Route 2"))
 
-        route = parse_gpx(gpx_path)
-        logger.info("GPX punten: %d, segmenten: %d", len(route["points"]), len(route["segments"]))
+        routes = await asyncio.gather(*tasks)
 
-        if direction == "reverse":
-            logger.info("Route wordt omgekeerd")
-            route = reverse_route(route)
-
-        wind_data = await analyze_segments(route["segments"], ride_dt)
-
-        return JSONResponse(
-            {
-                "route": {
-                    "points": route["points"],
-                    "distance_km": route["distance_km"],
-                    "coordinates": route["coordinates"],
-                },
-                "wind": wind_data,
-            }
-        )
+        return JSONResponse({"routes": routes})
 
     except ValueError as exc:
         logger.warning("Ongeldige invoer: %s", exc)

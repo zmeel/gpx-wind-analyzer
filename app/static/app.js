@@ -5,11 +5,25 @@ let arrowDistance = 0;
 // Must match FORECAST_FUTURE_LIMIT_DAYS in app/weather.py.
 const FORECAST_FUTURE_LIMIT_DAYS = 16;
 
+const CLASSIFICATION_COLORS = {
+  tegenwind: "#e0433b",
+  meewind: "#2fa860",
+};
+const DEFAULT_SEGMENT_COLOR = "#e8b93a";
+
+// Route 1 is a solid line, route 2 (when present) is dashed, so overlapping
+// routes stay distinguishable even though both use the same wind colors.
+const ROUTE_DASH_ARRAYS = [null, "10, 8"];
+
 // ============================
 // KAART INITIALISATIE
 // ============================
 
 document.addEventListener("DOMContentLoaded", function () {
+  // These don't depend on Leaflet, so wire them up even if the map fails to load.
+  initDateField();
+  initSecondRouteToggle();
+
   const mapElement = document.getElementById("map");
   if (!mapElement) {
     console.error("Map element niet gevonden");
@@ -17,6 +31,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   if (!window.L) {
     console.error("Leaflet niet geladen");
+    setStatus("Kaart kon niet geladen worden, maar analyseren werkt nog wel.");
     return;
   }
 
@@ -30,7 +45,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
   setTimeout(() => map.invalidateSize(), 500);
 
-  initDateField();
   setStatus("Kaart geladen.");
 });
 
@@ -50,6 +64,24 @@ function toISODate(date) {
   return date.toISOString().slice(0, 10);
 }
 
+function initSecondRouteToggle() {
+  const addButton = document.getElementById("addRoute2");
+  const removeButton = document.getElementById("removeRoute2");
+  const route2Fields = document.getElementById("route2Fields");
+  if (!addButton || !removeButton || !route2Fields) return;
+
+  addButton.addEventListener("click", () => {
+    route2Fields.hidden = false;
+    addButton.hidden = true;
+  });
+
+  removeButton.addEventListener("click", () => {
+    route2Fields.hidden = true;
+    addButton.hidden = false;
+    document.getElementById("file2").value = "";
+  });
+}
+
 // ============================
 // STATUS
 // ============================
@@ -66,7 +98,7 @@ function setStatus(text) {
 async function upload() {
   const file = document.getElementById("file").files[0];
   if (!file) {
-    setStatus("Selecteer eerst een GPX bestand.");
+    setStatus("Selecteer eerst een GPX bestand voor route 1.");
     return;
   }
 
@@ -77,14 +109,24 @@ async function upload() {
     return;
   }
 
-  const directionElement = document.getElementById("direction");
-  const direction = directionElement ? directionElement.value : "normal";
+  const direction = document.getElementById("direction").value;
 
   const formData = new FormData();
   formData.append("file", file);
   formData.append("date", date);
   formData.append("time", time);
   formData.append("direction", direction);
+
+  const route2Visible = !document.getElementById("route2Fields").hidden;
+  const file2 = route2Visible ? document.getElementById("file2").files[0] : null;
+  if (route2Visible && !file2) {
+    setStatus("Selecteer een GPX bestand voor route 2, of verwijder route 2.");
+    return;
+  }
+  if (file2) {
+    formData.append("file2", file2);
+    formData.append("direction2", document.getElementById("direction2").value);
+  }
 
   setStatus("Bezig met analyseren...");
 
@@ -96,9 +138,9 @@ async function upload() {
       throw new Error(data.detail || "Server fout");
     }
 
-    updateInfo(data);
     clearMap();
-    drawRoute(data);
+    updateRouteCards(data.routes);
+    drawRoutes(data.routes);
     setStatus("Analyse klaar.");
   } catch (error) {
     console.error(error);
@@ -107,78 +149,74 @@ async function upload() {
 }
 
 // ============================
-// INFO
+// INFO PANEL
 // ============================
 
-function updateInfo(data) {
-  const route = data.route || data;
+function updateRouteCards(routes) {
+  const container = document.getElementById("routeCards");
+  if (!container) return;
 
-  const distanceElement = document.getElementById("distance");
-  if (distanceElement && route.distance_km !== undefined) {
-    distanceElement.innerHTML = Number(route.distance_km).toFixed(2) + " km";
-  }
-
-  const pointsElement = document.getElementById("points");
-  if (pointsElement && route.points !== undefined) {
-    pointsElement.innerHTML = Array.isArray(route.points) ? route.points.length : route.points;
-  }
-
-  const summary = data.wind && data.wind.summary;
-  if (!summary) return;
-
-  setText("headwind", summary.tegenwind_segmenten ?? "-");
-  setText("tailwind", summary.meewind_segmenten ?? "-");
-  setText("crosswind", summary.zijwind_segmenten ?? "-");
-
-  const speedElement = document.getElementById("windspeed");
-  if (speedElement) {
-    speedElement.innerHTML =
-      summary.gemiddelde_windsnelheid !== undefined ? summary.gemiddelde_windsnelheid + " km/u" : "-";
-  }
-
-  const directionElement = document.getElementById("winddirection");
-  if (directionElement && summary.wind_direction !== undefined) {
-    directionElement.innerHTML = degreesToCompass(Number(summary.wind_direction));
-  }
+  container.innerHTML = routes.map((entry, index) => routeCardHTML(entry, index)).join("");
 }
 
-function setText(elementId, value) {
-  const element = document.getElementById(elementId);
-  if (element) element.innerHTML = value;
+function routeCardHTML(entry, index) {
+  const summary = entry.wind.summary;
+  const direction = degreesToCompass(Number(summary.wind_direction));
+  const dashClass = index === 0 ? "swatch-line-solid" : "swatch-line-dashed";
+
+  return `
+    <div class="card route-card">
+      <h2><span class="swatch ${dashClass}"></span>${escapeHtml(entry.label)}</h2>
+      <table class="summary">
+        <tr><td>Afstand</td><td>${Number(entry.route.distance_km).toFixed(2)} km</td></tr>
+        <tr><td>Punten</td><td>${entry.route.points.length}</td></tr>
+        <tr><td>Tegenwind</td><td>${summary.tegenwind_segmenten} segmenten</td></tr>
+        <tr><td>Meewind</td><td>${summary.meewind_segmenten} segmenten</td></tr>
+        <tr><td>Zijwind</td><td>${summary.zijwind_segmenten} segmenten</td></tr>
+        <tr><td>Gemiddelde wind</td><td>${summary.gemiddelde_windsnelheid} km/u</td></tr>
+        <tr><td>Windrichting</td><td>${direction}</td></tr>
+      </table>
+    </div>
+  `;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // ============================
-// ROUTE TEKENEN
+// ROUTES TEKENEN
 // ============================
 
-function drawRoute(data) {
-  if (data.wind && data.wind.segments) {
-    drawWindSegments(data.wind.segments);
-    return;
-  }
+function drawRoutes(routes) {
+  if (!map) return;
 
-  const route = data.route || data;
-  if (!route.coordinates) return;
-
-  const line = L.polyline(route.coordinates, { color: "blue", weight: 5 }).addTo(map);
-  routeLayers.push(line);
-  map.fitBounds(line.getBounds());
-}
-
-const CLASSIFICATION_COLORS = {
-  tegenwind: "red",
-  meewind: "green",
-};
-const DEFAULT_SEGMENT_COLOR = "yellow";
-
-function drawWindSegments(segments) {
   const bounds = L.latLngBounds();
+
+  routes.forEach((entry, index) => {
+    drawWindSegments(entry.wind.segments, index, bounds);
+  });
+
+  if (bounds.isValid()) {
+    map.fitBounds(bounds, { padding: [20, 20] });
+  }
+}
+
+function drawWindSegments(segments, routeIndex, bounds) {
+  const dashArray = ROUTE_DASH_ARRAYS[routeIndex] || null;
   arrowDistance = 0;
 
   segments.forEach((segment) => {
     const color = CLASSIFICATION_COLORS[segment.classification] || DEFAULT_SEGMENT_COLOR;
 
-    const line = L.polyline(segment.coordinates, { color, weight: 6 }).addTo(map);
+    const line = L.polyline(segment.coordinates, {
+      color,
+      weight: 6,
+      dashArray,
+    }).addTo(map);
+
     line.bindPopup(`
       <b>Segment ${segment.index}</b><br>
       Rijrichting: ${segment.bearing} deg<br>
@@ -194,8 +232,6 @@ function drawWindSegments(segments) {
     bounds.extend(segment.coordinates[0]);
     bounds.extend(segment.coordinates[1]);
   });
-
-  map.fitBounds(bounds);
 }
 
 // ============================
@@ -223,7 +259,7 @@ function drawDirectionArrowEveryKm(segment) {
   const left = [tip[0] + Math.cos(angle + headSpreadRad) * headLength, tip[1] + Math.sin(angle + headSpreadRad) * headLength];
   const right = [tip[0] + Math.cos(angle - headSpreadRad) * headLength, tip[1] + Math.sin(angle - headSpreadRad) * headLength];
 
-  const arrow = L.polyline([[midLat, midLon], tip, left, tip, right], { color: "black", weight: 3 }).addTo(map);
+  const arrow = L.polyline([[midLat, midLon], tip, left, tip, right], { color: "#1a1a1a", weight: 3 }).addTo(map);
   routeLayers.push(arrow);
 }
 

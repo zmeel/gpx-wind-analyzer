@@ -2,74 +2,104 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GPX Wind Analyzer</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="/static/style.css">
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
 
-  <h1>GPX Wind Analyzer</h1>
-  <p>Analyseer je fietsroute op wind, voor een rit in het verleden of de (nabije) toekomst.</p>
-
-  <div class="toolbar">
-    <input type="file" id="file" accept=".gpx">
-
-    <label for="rideDate">Datum:</label>
-    <input type="date" id="rideDate">
-
-    <label for="rideTime">Tijd:</label>
-    <input type="time" id="rideTime" value="12:00">
-
-    <label for="direction">Richting:</label>
-    <select id="direction">
-      <option value="normal">Normaal</option>
-      <option value="reverse">Omgekeerd</option>
-    </select>
-
-    <button onclick="upload()">Analyseer</button>
-  </div>
-
-  <div class="main">
-    <div class="map-panel">
-      <div id="map"></div>
-    </div>
-
-    <div class="info-panel">
-      <h2>Route</h2>
-      <table class="summary">
-        <tr><td>Afstand</td><td id="distance">-</td></tr>
-        <tr><td>Punten</td><td id="points">-</td></tr>
-      </table>
-
-      <hr>
-
-      <h2>Windanalyse</h2>
-      <table class="summary">
-        <tr><td>Tegenwind</td><td id="headwind">-</td></tr>
-        <tr><td>Meewind</td><td id="tailwind">-</td></tr>
-        <tr><td>Zijwind</td><td id="crosswind">-</td></tr>
-        <tr><td>Gemiddelde wind</td><td id="windspeed">-</td></tr>
-        <tr><td>Windrichting</td><td id="winddirection">-</td></tr>
-      </table>
-
-      <hr>
-
-      <h2>Status</h2>
-      <div id="status">Klaar.</div>
-
-      <hr>
-
-      <h2>Legenda</h2>
-      <div class="legend">
-        <div>Tegenwind</div>
-        <div>Zijwind</div>
-        <div>Meewind</div>
-        <div>Rijrichting</div>
+  <header class="page-header">
+    <div class="page-header-title">
+      <span class="logo-mark" aria-hidden="true">🌬️</span>
+      <div>
+        <h1>GPX Wind Analyzer</h1>
+        <p class="subtitle">Analyseer je fietsroute(s) op wind, voor een rit in het verleden of de (nabije) toekomst.</p>
       </div>
     </div>
-  </div>
+  </header>
+
+  <main class="layout">
+    <section class="card toolbar">
+      <form id="analyzeForm" class="toolbar-form" onsubmit="return false;">
+
+        <div class="route-input" data-route="1">
+          <div class="route-input-header">
+            <span class="route-dot route-dot-1" aria-hidden="true"></span>
+            <label for="file">Route 1</label>
+          </div>
+          <div class="route-input-row">
+            <input type="file" id="file" accept=".gpx" required>
+            <select id="direction" aria-label="Richting route 1">
+              <option value="normal">Normaal</option>
+              <option value="reverse">Omgekeerd</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="route-input" data-route="2" id="route2Fields" hidden>
+          <div class="route-input-header">
+            <span class="route-dot route-dot-2" aria-hidden="true"></span>
+            <label for="file2">Route 2</label>
+            <button type="button" class="link-button" id="removeRoute2">verwijderen</button>
+          </div>
+          <div class="route-input-row">
+            <input type="file" id="file2" accept=".gpx">
+            <select id="direction2" aria-label="Richting route 2">
+              <option value="normal">Normaal</option>
+              <option value="reverse">Omgekeerd</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" class="link-button" id="addRoute2">+ Tweede route vergelijken</button>
+
+        <div class="toolbar-datetime">
+          <div class="field">
+            <label for="rideDate">Datum</label>
+            <input type="date" id="rideDate">
+          </div>
+          <div class="field">
+            <label for="rideTime">Tijd</label>
+            <input type="time" id="rideTime" value="12:00">
+          </div>
+        </div>
+
+        <button type="button" class="primary-button" onclick="upload()">Analyseer</button>
+      </form>
+    </section>
+
+    <div class="results">
+      <section class="card map-card">
+        <div id="map"></div>
+      </section>
+
+      <section class="side-panel">
+        <div class="card">
+          <h2>Status</h2>
+          <div id="status">Klaar.</div>
+        </div>
+
+        <div id="routeCards" class="route-cards"></div>
+
+        <div class="card">
+          <h2>Legenda</h2>
+          <div class="legend">
+            <div class="legend-item"><span class="swatch swatch-headwind"></span>Tegenwind</div>
+            <div class="legend-item"><span class="swatch swatch-crosswind"></span>Zijwind</div>
+            <div class="legend-item"><span class="swatch swatch-tailwind"></span>Meewind</div>
+            <div class="legend-item"><span class="swatch swatch-line-solid"></span>Route 1 (lijnstijl)</div>
+            <div class="legend-item"><span class="swatch swatch-line-dashed"></span>Route 2 (lijnstijl)</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
 
 </body>
 </html>
