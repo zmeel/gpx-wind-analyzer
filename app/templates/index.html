@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>GPX Wind Analyzer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+
+  <h1>GPX Wind Analyzer</h1>
+  <p>Analyseer je fietsroute op wind, voor een rit in het verleden of de (nabije) toekomst.</p>
+
+  <div class="toolbar">
+    <input type="file" id="file" accept=".gpx">
+
+    <label for="rideDate">Datum:</label>
+    <input type="date" id="rideDate">
+
+    <label for="rideTime">Tijd:</label>
+    <input type="time" id="rideTime" value="12:00">
+
+    <label for="direction">Richting:</label>
+    <select id="direction">
+      <option value="normal">Normaal</option>
+      <option value="reverse">Omgekeerd</option>
+    </select>
+
+    <button onclick="upload()">Analyseer</button>
+  </div>
+
+  <div class="main">
+    <div class="map-panel">
+      <div id="map"></div>
+    </div>
+
+    <div class="info-panel">
+      <h2>Route</h2>
+      <table class="summary">
+        <tr><td>Afstand</td><td id="distance">-</td></tr>
+        <tr><td>Punten</td><td id="points">-</td></tr>
+      </table>
+
+      <hr>
+
+      <h2>Windanalyse</h2>
+      <table class="summary">
+        <tr><td>Tegenwind</td><td id="headwind">-</td></tr>
+        <tr><td>Meewind</td><td id="tailwind">-</td></tr>
+        <tr><td>Zijwind</td><td id="crosswind">-</td></tr>
+        <tr><td>Gemiddelde wind</td><td id="windspeed">-</td></tr>
+        <tr><td>Windrichting</td><td id="winddirection">-</td></tr>
+      </table>
+
+      <hr>
+
+      <h2>Status</h2>
+      <div id="status">Klaar.</div>
+
+      <hr>
+
+      <h2>Legenda</h2>
+      <div class="legend">
+        <div>Tegenwind</div>
+        <div>Zijwind</div>
+        <div>Meewind</div>
+        <div>Rijrichting</div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
